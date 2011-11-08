@@ -54,27 +54,35 @@
   <div class="splitview-controller">
     <div class="splitview-main">
       <div class="toolbar">
-        <input class="splitview-filter"
-               type="search"
-               title="&searchInput.tooltip;"
-               placeholder="&searchInput.placeholder;"/>
+        <input id="startProfiling"
+               class="splitview-filter"
+               type="button"
+               value="Start Profiling"
+               onclick="window.codeInspectorChrome.startProfiling()"/>
+        <input id="stopProfiling"
+               class="splitview-filter"
+               type="button"
+               value="Stop Profiling"
+               disabled="true"
+               onclick="window.codeInspectorChrome.stopProfiling()"/>
       </div>
+<div id="scriptPane" style="overflow:auto;height:600px;width:800px;background-color:white">
+
+<table class='codeDisplay' cellspacing='0' cellpadding='0'>
+<tr>     <td class='code'>JSObject *get(uint32 key) const {</td></tr>
+<tr><td class='underline'>                          <span class='underline'>     </span></td></tr>
+<tr><td class='underline'>                            <span class='underline'>   </span></td></tr>
+<tr><td class='code'>    return data[getIndex(key)];</td></tr>
+<tr><td class='code'>}</td></tr>
+</table>
+
+</div>
     </div>
     <div class="splitview-nav-container">
       <ol class="splitview-nav" tabindex="0"></ol>
-      <div class="splitview-nav placeholder empty">
-        <h5>&noScript.label;</h5>
-        <small>&noScript-tip-start.label;
-          <a href="#"
-             class="coverage-tool-reloadButton">&noScript-tip-action.label;</a>
-          &noScript-tip-end.label;</small>
+      <div class="splitview-nav">
       </div>
       <div class="splitview-nav placeholder all-filtered">
-        <h5>&searchNoResults.label;</h5>
-        <small>
-          <a href="#"
-             class="splitview-filter-clearButton">&searchClearButton.label;</a>
-        </small>
       </div>
     </div> <!-- .splitview-nav-container -->
   </div>   <!-- .splitview-controller -->

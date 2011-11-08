@@ -1,148 +1,60 @@
-/*
- * Any copyright is dedicated to the Public Domain.
- * http://creativecommons.org/publicdomain/zero/1.0/
- */
 
-.script-status {
-  float: left;
-  width: 20px;
-  height: 20px;
-  margin-right: 6px;
-  border: 1px inset WindowFrame;
+div.toolbar {
+    padding: 5px 5px 5px 5px;
 }
 
-.script-name {
-  display: inline-block;
-  width: 150px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: pre;
+div.scriptHeader {
+    font-size: large;
+    padding-bottom: 6px;
+    padding-left: 6px;
 }
 
-/* stylesheet toolbar only visible for the active/focused/hovered stylesheets */
-.splitview-nav > li > header > .toolbar {
-  visibility: hidden;
-  float: right;
-  font-size: 0.8em;
-  margin-right: 20px;
-}
-.splitview-nav > li:hover > header > .toolbar,
-.splitview-nav > li:focus > header > .toolbar,
-.splitview-nav > li.splitview-active > header > .toolbar {
-  visibility: visible;
-}
-.toolbar > a {
-  color: -moz-default-color;
+table.codeDisplay {
+    padding-top: 10px;
+    padding-bottom: 30px;
+    padding-left: 10px;
 }
 
-li hgroup {
-  display: block;
-  float: left;
+td.code {
+    border-width: 1px 1px 1px 1px;
+    padding: 0px 0px 0px 0px;
+    white-space: pre;
+    font-family: monospace;
 }
 
-h1, h2, h3 {
-  font-weight: normal;
-  margin: 0;
-  padding: 0;
-}
-h1 {
-  font-size: 0.9em;
-}
-h2, h3 {
-  font-size: 0.8em;
+td.underline {
+    border-width: 0px 0px 0px 0px;
+    padding: 0px 0px 1px 0px;
+    white-space: pre;
+    font-family: monospace;
+    line-height: 45%;
 }
 
-.script-error-message {
-  display: none;
-}
-.error .script-error-message {
-  display: block;
-  color: red;
-}
-
-.script-source {
-  display: -moz-box;
-  -moz-box-flex: 1;
-  min-height: 18em;
-  padding-top: 3px;
-  padding-bottom: 3px;
-  border: 1px inset WindowFrame;
-  border-radius: 4px;
-  background-color: -moz-default-background-color;
+a.opcodeInline {
+    white-space: pre;
+    font-family: monospace;
+    line-height: 70%;
+    display:inline-block;
 }
 
-/* limited height mode */
-@media (max-height: 250px) {
-  .script-stats {
-    display: none;
-  }
-  .script-source {
-    margin: 0;
-    min-height: 10em;
-  }
+a.opcodeInlineSelected {
+    white-space: pre;
+    font-family: monospace;
+    line-height: 70%;
+    display:inline-block;
 }
 
-/* limited width mode (hide search unless it has focus [search-on-type]) */
-@media (max-width: 400px) {
-  .splitview-filter {
-    position: fixed;
-    width: 100%;
-    left: 0;
-    bottom: -2em;
-    -moz-transition-property: bottom;
-    -moz-transition-duration: 0.5s;
-  }
-  .splitview-filter:focus {
-    bottom: 0em;
-  }
-  .script-source {
-    margin: 0;
-  }
+a.opcodeOOL {
 }
 
-.script-mode-selectBox {
-  margin-bottom: 4px;
+a.opcodeOOLSelected {
 }
 
-.script-source {
-  display: block;
-  font-family: monospace;
-  font-size: 11px;
-  overflow: auto;
-  white-space: pre;
-}
-.script-source p {
-  display: block;
-  width: 100%;
-  margin: 0px;
-  padding: 0px;
-}
-.script-source .gutter {
-  display: inline-block;
-  width: 40px;
-  background: #e1ebfb;
-  border-right: 1px solid gray;
-}
-.script-source code {
-  display: inline-block;
-  width: 80%;
-  -moz-transition-property: background-color, font-weight;
-  -moz-transition-duration: 4s, 0.5s;
+div.dropdown {
+    font-size: 120%;
 }
 
-.percentile-good .script-status,
-.script-source.mode-coverage .full code {
-  background-color: #9f9 !important;
-}
-.percentile-bad .script-status,
-.script-source.mode-coverage .none code {
-  background-color: #f99 !important;
-}
-.percentile-average .script-status,
-.script-source.mode-coverage .partial code {
-  background-color: #ff9 !important;
-}
-
-.script-source .recent {
-  font-weight: bold;
+a.opcodeDropdown {
+    white-space: pre;
+    font-family: monospace;
 }

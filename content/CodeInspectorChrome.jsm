@@ -19,7 +19,7 @@
  * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s):
- *   Cedric Vivier <cedricv@neonux.com> (original author)
+ *   Brian Hackett <bhackett@mozilla.com> (original author)
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -50,13 +50,49 @@ Cu.import("chrome://CodeInspector/content/AdaptiveSplitView.jsm");
 Cu.import("chrome://CodeInspector/content/Coverage.jsm");
 Cu.import("chrome://CodeInspector/content/StyleEditorUtil.jsm");
 
+function jsdump(str)
+{
+  Cc['@mozilla.org/consoleservice;1']
+            .getService(Components.interfaces.nsIConsoleService)
+            .logStringMessage(str);
+}
+
+function htmlEscape(str)
+{
+  str = str.replace(/\&/g, '&amp;');
+  str = str.replace(/\</g, '&lt;');
+  str = str.replace(/\>/g, '&gt;');
+  return str;
+}
+
+var metricNames = [
+    "mjitHits",
+    "mjitStubs",
+    "mjitCode",
+    "mjitPics"
+];
+
+// Get a heuristic measurement of the amount of JIT activity for a script or
+// opcode, with a heavy penalty for stub calls performed.
+function jitActivity(v) {
+  var stubs = v.mjitStubs || 0;
+  var code = v.mjitCode || 0;
+  var pics = v.mjitPics || 0;
+  return (stubs * 100) + code + pics;
+}
+
+function activityColor(fraction) {
+  // get an rgb color for fraction. 1.0 should return rgb(255,0,0), 0.0 should return rgb(10,0,0).
+  var gb = 200 - ((fraction * 200) | 0);
+  return "rgb(255," + gb + "," + gb + ")";
+}
+
+const ACTIVITY_THRESHOLD = .01;
+
 const SCRIPT_TEMPLATE = "script";
 
 const LOAD_ERROR = "load-error";
 const HTML_NS = "http://www.w3.org/1999/xhtml";
-
-const POLLING_INTERVAL_MS = 500;
-
 
 /**
  * CodeInspectorChrome constructor.
@@ -79,7 +115,6 @@ function CodeInspectorChrome(aRoot, aContentWindow)
   this._window = this._document.defaultView;
 
   this._coverage = null;
-  this._scripts = {};
   this._listeners = []; // @see addChromeListener
 
   this._contentWindow = null;
@@ -136,6 +171,7 @@ CodeInspectorChrome.prototype = {
       return;
     }
 
+    /*
     let onContentUnload = function () {
       aContentWindow.removeEventListener("unload", onContentUnload, false);
       if (this.contentWindow == aContentWindow) {
@@ -143,6 +179,7 @@ CodeInspectorChrome.prototype = {
       }
     }.bind(this);
     aContentWindow.addEventListener("unload", onContentUnload, false);
+    */
 
     if (aContentWindow.document.readyState == "complete") {
       this._populateChrome();
@@ -174,21 +211,6 @@ CodeInspectorChrome.prototype = {
     * @see addChromeListener
     */
   get isContentAttached() this._isContentAttached,
-
-  /**
-   * Retrieve an object with coverage data for each script that currently has
-   * reports available. Every script uri is a key of the object.
-   *
-   * @return object
-   */
-  get scripts()
-  {
-    let scripts = {};
-    this._scripts.forEach(function (aScript) {
-      scripts[aScript.filename] = aScript;
-    });
-    return scripts;
-  },
 
   /**
    * Add a listener for CodeInspectorChrome events.
@@ -280,7 +302,6 @@ CodeInspectorChrome.prototype = {
       this._coverage.removeListener(this);
     }
     this._coverage = null;
-    this._scripts = {};
 
     this._view.removeAll();
   },
@@ -302,19 +323,6 @@ CodeInspectorChrome.prototype = {
     this._coverage.addListener(this);
 
     this._triggerChromeListeners("ContentAttach");
-
-    this._dumpCoverageData();
-  },
-
-  /**
-   * TODO:
-   */
-  _dumpCoverageData: function CC__dumpCoverageDAta()
-  {
-    let utils = this.contentWindow.QueryInterface(Ci.nsIInterfaceRequestor).
-                  getInterface(Ci.nsIDOMWindowUtils);
-    let dump = utils.dumpCompartmentBytecode();
-    this._coverage.parseData(dump);
   },
 
   /**
@@ -328,351 +336,301 @@ CodeInspectorChrome.prototype = {
     this._triggerChromeListeners("ContentDetach");
   },
 
-  /**
-   * Retrieve the summary element for a given script uri.
-   *
-   * @param object aScriptData
-   * @return DOMElement
-   *         Item's summary element or null if not found.
-   * @see AdaptiveSplitView
-   */
-  getSummaryElementForScript: function CC_getSummaryElementForScript(aScriptData)
-  {
-    return this._scripts[aScriptData.filename].$summary;
-  },
-
-  /**
-   * Update split view summary of given script uri.
-   *
-   * @param object aScriptData
-   * @param DOMElement aSummary
-   *        Optional item's summary element to update. If none, item corresponding
-   *        to passed aEditor is used.
-   */
-  _updateSummaryForScript: function CC__updateSummaryForScript(aScriptData, aSummary)
-  {
-    let summary = aSummary || this.getSummaryElementForScript(aScriptData);
-
-    let ratio = aScriptData.covered / aScriptData.$LOC;
-    let percentile = "percentile-bad";
-    if (ratio >= 0.8) {
-      percentile = "percentile-good";
-    } else if (ratio > 0.5) {
-      percentile = "percentile-average";
-    }
-
-    this._view.setItemClassName(summary, percentile);
-
-    text(summary, ".script-name", this._getFriendlyName(aScriptData));
-    text(summary, ".script-covered",
-      _("script-covered.label",
-        aScriptData.covered,
-        Math.round(ratio * 100.0),
-        aScriptData.$LOC));
-
-//    text(summary, ".script-error-message", aEditor.errorMessage);
-  },
-
-  /**
-   * Get a user-friendly name for the script.
-   *
-   * @return string
-   */
-  _getFriendlyName: function CC__getFriendlyName(aScriptData)
-  {
-    if (aScriptData.$friendlyName) {
-      return aScriptData.$friendlyName;
-    }
-
-    let scriptURI = aScriptData.filename;
-    let contentURI = this.contentDocument.baseURIObject;
-    let contentURIScheme = contentURI.scheme;
-    let contentURILeafIndex = contentURI.specIgnoringRef.lastIndexOf("/");
-    contentURI = contentURI.specIgnoringRef;
-
-    // get content base URI without leaf name (if any)
-    if (contentURILeafIndex > contentURIScheme.length) {
-      contentURI = contentURI.substring(0, contentURILeafIndex + 1);
-    }
-
-    // avoid verbose repetition of absolute URI when the style sheet URI
-    // is relative to the content URI
-    aScriptData.$friendlyName = (scriptURI.indexOf(contentURI) == 0)
-                                ? scriptURI.substring(contentURI.length)
-                                : scriptURI;
-    return aScriptData.$friendlyName;
-  },
-
-  /**
-   * Retrieve the script source from the cache or from a local file.
-   *
-   * @param object aScriptData
-   */
-  _loadSource: function CC__loadSource(aScriptData)
-  {
-    let uri = aScriptData.filename;
-    let scheme = Services.io.extractScheme(uri);
-    switch (scheme) {
-      case "file":
-      case "chrome":
-      case "resource":
-        this._loadSourceFromFile(aScriptData);
-        break;
-      default:
-        this._loadSourceFromCache(aScriptData);
-        break;
-    }
-  },
-
-  /**
-   * Load source from a file or file-like resource.
-   *
-   * @param string aScriptData
-   */
-  _loadSourceFromFile: function CC__loadSourceFromFile(aScriptData)
-  {
-    let aHref = aScriptData.filename; //FIXME:
-    try {
-      NetUtil.asyncFetch(aHref, function onFetch(aStream, aStatus) {
-        if (!Components.isSuccessCode(aStatus)) {
-          return this._signalError(LOAD_ERROR);
-        }
-        let source = NetUtil.readInputStreamToString(aStream, aStream.available());
-        aStream.close();
-        this._onSourceLoad(aScriptData, source);
-      }.bind(this));
-    } catch (ex) {
-      this._signalError(LOAD_ERROR);
-    }
-  },
-
-  /**
-   * Load source from the HTTP cache.
-   *
-   * @param string aScriptData
-   */
-  _loadSourceFromCache: function CC__loadSourceFromCache(aScriptData)
-  {
-    let aHref = aScriptData.filename; //FIXME:
-    try {
-      let cacheService = Cc["@mozilla.org/network/cache-service;1"]
-                           .getService(Ci.nsICacheService);
-      let session = cacheService.createSession("HTTP", Ci.nsICache.STORE_ANYWHERE, true);
-      session.doomEntriesIfExpired = false;
-      session.asyncOpenCacheEntry(aHref, Ci.nsICache.ACCESS_READ, {
-        onCacheEntryAvailable: function onCacheEntryAvailable(aEntry, aMode, aStatus) {
-          if (!Components.isSuccessCode(aStatus)) {
-            return this._signalError(LOAD_ERROR);
-          }
-
-          let source = "";
-          let stream = aEntry.openInputStream(0);
-          let head = aEntry.getMetaDataElement("response-head");
-
-          if (/Content-Encoding:\s*gzip/i.test(head)) {
-            let converter = Cc["@mozilla.org/streamconv;1?from=gzip&to=uncompressed"]
-                              .createInstance(Ci.nsIStreamConverter);
-            converter.asyncConvertData("gzip", "uncompressed", {
-              onDataAvailable: function onDataAvailable(aRequest, aContext, aUncompressedStream, aOffset, aCount) {
-                source += NetUtil.readInputStreamToString(aUncompressedStream, aCount);
-              }
-            }, this);
-            while (stream.available()) {
-              converter.onDataAvailable(null, this, stream, 0, stream.available());
-            }
-          } else {
-            // uncompressed data
-            while (stream.available()) {
-              source += NetUtil.readInputStreamToString(stream, stream.available());
-            }
-          }
-
-          stream.close();
-          aEntry.close();
-          this._onSourceLoad(aScriptData, source);
-        }.bind(this)
-      });
-    } catch (ex) {
-      this._signalError(LOAD_ERROR);
-    }
-  },
-
-  /**
-   * Called when source has been loaded.
-   *
-   * @param object aScriptData
-   * @param string aSourceText
-   */
-  _onSourceLoad: function CC__onSourceLoad(aScriptData, aSourceText)
-  {
-    aScriptData.$sourceText = aSourceText;
-    aScriptData.$LOC = 0;
-
-    let item = this._view.appendTemplatedItem(SCRIPT_TEMPLATE, {
-      data: {
-        scriptData: aScriptData
-      },
-      onCreate: function ASV_onItemCreate(aSummary, aDetails, aData) {
-        let scriptData = aData.scriptData;
-        scriptData.$summary = aSummary;
-
-        wire(aSummary, ".script-mode-selectBox", {
-          events: {
-            "change": function onModeChange(aEvent) {
-              aEvent.stopPropagation();
-
-              let sourceView = aDetails.querySelector(".script-source");
-              sourceView.className = "script-source " + aEvent.target.value;
-            }
-          }
-        });
-
-        // autofocus first script
-        if (aSummary.parentNode.firstChild == aSummary) {
-          this._view.activeSummary = aSummary;
-        }
-
-        aSummary.addEventListener("focus", function onSummaryFocus(aEvent) {
-          if (aEvent.target == aSummary) {
-            // autofocus the script name
-            aSummary.querySelector(".script-name").focus();
-          }
-        }, false);
-
-        this._populateSource(scriptData, aDetails);
-        this._updateSummaryForScript(scriptData, aSummary);
-
-        this._triggerChromeListeners("ScriptAdded", [scriptData]);
-
-        this._window.setInterval(function updateCoverageData() {
-          this._dumpCoverageData();
-        }.bind(this), POLLING_INTERVAL_MS);
-      }.bind(this)
-    });
-  },
-
-  /**
-   * TODO:
-   */
-  _populateSource: function CC__populateSource(aScriptData, aDetails)
-  {
-    let document = aDetails.ownerDocument;
-    let sourceView = aDetails.querySelector(".script-source");
-
-    let mode = this._document.querySelector(".script-mode-selectBox").value;
-    sourceView.className = "script-source " + mode;
-
-    let lineno = 1;
-    for each (let line in aScriptData.$sourceText.split(/\r?\n/)) {
-      let lineView = document.createElementNS(HTML_NS, "p");
-      let gutter = document.createElementNS(HTML_NS, "span");
-      gutter.className = "gutter";
-      gutter.appendChild(document.createTextNode(lineno));
-      lineView.appendChild(gutter);
-      let code = document.createElementNS(HTML_NS, "code");
-      code.appendChild(document.createTextNode(line));
-      lineView.appendChild(code);
-
-      lineView.setAttribute("data-lineno", lineno);
-
-      let lineData = aScriptData.lines[lineno - 1];
-      if (lineData) {
-        aScriptData.$LOC++;
-        this._updateLine(lineView, lineno, lineData);
-      }
-
-      sourceView.appendChild(lineView);
-      lineno++;
-    }
-  },
-
-  /**
-   * TODO:
-   */
-  _updateSource: function CC__updateSource(aScriptData, aLineNo, aLineData)
-  {
-    let summary = this.getSummaryElementForScript(aScriptData);
-    //FIXME: ASV helper!
-    let details = summary.getUserData("splitview-binding")._details;
-    let sourceView = details.querySelector(".script-source");
-    let lineElement = sourceView.children[aLineNo - 1];
-
-    this._updateLine(lineElement, aLineNo, aLineData);
-
-    if (aLineNo != 1) { //inline workaround FIXME:
-      let now = Date.now();
-      if (!this._lastJumpTime ||
-          now - this._lastJumpTime > POLLING_INTERVAL_MS) {
-        let recents = sourceView.querySelectorAll(".recent");
-        for (let i = 0; i < recents.length; ++i) {
-          recents[i].classList.remove("recent");
-        }
-
-        this._view.activeSummary = summary;
-        (lineElement.previousElementSibling || lineElement).scrollIntoView();
-        this._lastJumpTime = Date.now();
-      }
-    }
-
-    lineElement.classList.add("recent");
-  },
-
-  _updateLine: function CC__updateLine(aLineElement, aLineNo, aLineData)
-  {
-    aLineElement.setAttribute("title",
-      _("executionCount.label", aLineNo, aLineData.counts[0]));
-    aLineElement.className = aLineData.coverage;
-  },
-
   //FIXME:
   _signalError: function CC__signalError(aCode)
   {
     log("ERROR", aCode);
   },
 
-  /**
-   * ICoverageListener implementation
-   * @See Coverage.addListener
-   */
-
-  /**
-   * Called a new script has been covered.
-   *
-   * @param Coverage aCoverage
-   * @param string aUri
-   * @param object aScriptData
-   */
-  onNewScript: function C_onNewScript(aCoverage, aUri, aScriptData)
+  startProfiling: function ()
   {
-    if (/\.html$/.test(aScriptData.filename)) {
-      return; // ignore inline scripts for now FIXME:
+    var startButton = this._document.getElementById("startProfiling");
+    var stopButton = this._document.getElementById("stopProfiling");
+
+    startButton.disabled = true;
+    stopButton.disabled = false;
+
+    var utils = this.contentWindow.QueryInterface(Ci.nsIInterfaceRequestor).
+                  getInterface(Ci.nsIDOMWindowUtils);
+    utils.startPCCountProfiling();
+  },
+
+  stopProfiling: function()
+  {
+    var startButton = this._document.getElementById("startProfiling");
+    var stopButton = this._document.getElementById("stopProfiling");
+
+    startButton.disabled = false;
+    stopButton.disabled = true;
+
+    var utils = this.contentWindow.QueryInterface(Ci.nsIInterfaceRequestor).
+                  getInterface(Ci.nsIDOMWindowUtils);
+    utils.stopPCCountProfiling();
+
+    var count = utils.getPCCountScriptCount();
+    var text = "";
+
+    this.scripts = [];
+    for (var i = 0; i < count; i++) {
+      var json = utils.getPCCountScriptSummary(i);
+      var summary = JSON.parse(json);
+      summary.id = i;
+      this.scripts.push(summary);
     }
-    this._scripts[aScriptData.filename] = aScriptData;
-    this._loadSource(aScriptData);
+
+    // initially sort the scripts by the amount of JIT activity.
+    var activityScripts = this.scripts.sort(function (a,b) { return jitActivity(b) - jitActivity(a); });
+
+    var maxActivity = jitActivity(activityScripts[0] || {});
+    for (var i = 0; i < activityScripts.length; i++) {
+      var summary = activityScripts[i];
+      var fraction = jitActivity(summary) / maxActivity;
+      if (fraction < ACTIVITY_THRESHOLD)
+        continue;
+      var color = activityColor(fraction);
+      var toggle = "'document.toggleScript(" + summary.id + ")'";
+      text += "<div class='scriptHeader'>";
+      text += "<a href='#' onclick=" + toggle + " style='background-color:" + color + ";white-space:pre'>    </a>";
+      text += "<a href='#' onclick=" + toggle + " class='scriptHeader'>";
+      text += " " + htmlEscape(summary.name);
+      text += "</a>";
+      text += "</div>";
+      text += "<div id='scriptTable" + summary.id + "'></div>";
+    }
+
+    this._document.toggleScript = this.toggleScript.bind(this);
+    this._document.toggleOpcode = this.toggleOpcode.bind(this);
+
+    var pane = this._document.getElementById("scriptPane");
+    pane.innerHTML = text;
   },
 
-  /**
-   * Called when script data has been updated
-   *
-   * @param Coverage aCoverage
-   * @param string aUri
-   * @param object aScriptData
-   */
-  onScriptUpdate: function C_onScriptUpdate(aCoverage, aUri, aScriptData)
+  toggleScript: function(scriptIndex)
   {
-    this._updateSummaryForScript(aScriptData);
+    var element = this._document.getElementById("scriptTable" + scriptIndex);
+    if (element.innerHTML) {
+      element.innerHTML = "";
+      return;
+    }
+
+    var utils = this.contentWindow.QueryInterface(Ci.nsIInterfaceRequestor).
+                  getInterface(Ci.nsIDOMWindowUtils);
+    var json = utils.getPCCountScriptContents(scriptIndex);
+
+    var contents = JSON.parse(json);
+
+    var text = WalkScriptText.call(this, scriptIndex, contents);
+    element.innerHTML = text;
   },
 
-  /**
-   * Called when line data has been updated
-   *
-   * @param Coverage aCoverage
-   * @param string aUri
-   * @param object aLineData
-   */
-  onLineUpdate: function C_onLineUpdate(aCoverage, aUri, aLineNo, aLineData)
+  toggleOpcode: function(scriptIndex, id)
   {
-    let scriptData = this._scripts[aUri];
-    this._updateSource(scriptData, aLineNo, aLineData);
+    var op = this.scripts[scriptIndex].opcodes[id];
+
+    var selector = this._document.getElementById("selector_" + scriptIndex + "_" + id);
+    var dropdown = this._document.getElementById("dropdown_" + scriptIndex + "_" + id);
+    if (dropdown.innerHTML) {
+      dropdown.style.paddingTop = "";
+      dropdown.style.paddingBottom = "";
+      dropdown.innerHTML = "";
+      selector.className = op.underlined ? "opcodeInline" : "opcodeOOL";
+      selector.style.backgroundColor = op.color;
+      return;
+    }
+
+    selector.className = op.underlined ? "opcodeInlineSelected" : "opcodeOOLSelected";
+    selector.style.backgroundColor = '#1E90FF';
+
+    var text = "<a href='#' onclick='toggleOpcode(" + scriptIndex + "," + id + ")' class='opcodeDropdown'>";
+    text += htmlEscape(op.text);
+    text += "</a>";
+
+    text += "<span class='metrics'> ::";
+
+    for (var i = 0; i < metricNames.length; i++) {
+      var name = metricNames[i];
+      if (op[name])
+        text += " " + name + ": " + op[name];
+    }
+
+    text += "</span>";
+
+    dropdown.style.paddingTop = "4px";
+    dropdown.style.paddingBottom = "4px";
+    dropdown.innerHTML = text;
   }
 };
+
+function WalkScriptText(scriptIndex, contents)
+{
+  // split the script text into separate lines, annotating each line with
+  // expression information in that line.
+
+  var linesArray = contents.text.split('\n').map(function(v) { return {text:v, ops:[]} });
+
+  var line = linesArray[0];
+  var lineIndex = 0;
+  var lineOffset = 0;  // starting offset of the current line
+
+  var opcodes = {};
+
+  // store opcodes on the CodeInspectorChrome for later use.
+  this.scripts[scriptIndex].opcodes = opcodes;
+
+  var maxActivity = 0;
+  var opcodeArray = contents.opcodes || [];
+  for (var i = 0; i < opcodeArray.length; i++) {
+    var op = opcodeArray[i];
+    opcodes[op.id] = op;
+    var activity = jitActivity(op);
+    if (activity > maxActivity)
+      maxActivity = activity;
+  }
+
+  function addChildrenText(op, startOffset, endOffset, depth) {
+    if (op.text && !op.hasAssignedLine) {
+      line.ops.push(op);
+      op.hasAssignedLine = true;
+    }
+
+    if (op.text && startOffset) {
+      var len = op.text.length;
+      while (startOffset + len <= endOffset) {
+        if (line.text.substring(startOffset, startOffset + len) == op.text) {
+          var fraction = jitActivity(op) / maxActivity;
+          if (fraction >= ACTIVITY_THRESHOLD) {
+            op.lineOffset = startOffset;
+            op.lineDepth = depth++;
+            op.color = activityColor(fraction);
+          }
+          endOffset = startOffset + len;
+          break;
+        }
+        startOffset++;
+      }
+    }
+
+    var children = op.children || [];
+    for (var i = 0; i < children.length; i++) {
+      var child = opcodes[children[i]];
+      if (child)
+        startOffset = addChildrenText(child, startOffset, endOffset, depth);
+    }
+
+    return endOffset;
+  }
+
+  var opcodeArray = contents.opcodes || [];
+  for (var i = 0; i < opcodeArray.length; i++) {
+    var op = opcodeArray[i];
+    opcodes[op.id] = op;
+
+    // track the encountered line for each opcode, to use in case the opcode is
+    // orphaned and has no transitive parent with an offset.
+    op.foundLine = line;
+
+    // for opcodes with offsets into the script text, update the current line.
+    if (op.offset) {
+      while (op.offset < lineOffset) {
+        line = linesArray[--lineIndex];
+        lineOffset -= line.text.length + 1;
+      }
+      while (lineOffset + line.text.length < op.offset && lineIndex != linesArray.length - 1) {
+        lineOffset += line.text.length + 1;
+        line = linesArray[++lineIndex];
+      }
+
+      var startOffset = op.offset - lineOffset;
+      var endOffset = op.text ? startOffset + op.text.length : line.text.length;
+      addChildrenText(op, startOffset, endOffset, 0);
+    }
+  }
+
+  // update op arrays on each line with any orphaned opcodes.
+  for (var id in opcodes) {
+    var op = opcodes[id];
+    if (op.text && !op.hasAssignedLine) {
+      var line = op.foundLine || lineArray[0];
+      line.ops.push(op);
+    }
+  }
+
+  var text = "<table class='codeDisplay' cellspacing='0' cellpadding='0'>";
+
+  for (var i = 0; i < linesArray.length; i++) {
+    var line = linesArray[i];
+
+    text += "<tr><td class='code'>";
+    text += htmlEscape(line.text);
+
+    var underlinedArray = [];
+    for (var depth = 0;; depth++) {
+      var underlined = [];
+      for (var j = 0; j < line.ops.length; j++) {
+        var op = line.ops[j];
+        if (op.lineDepth !== undefined && op.lineDepth == depth) {
+          op.underlined = true;
+          underlined.push(op);
+        }
+      }
+      if (!underlined.length)
+        break;
+      underlinedArray.push(underlined);
+    }
+
+    var hasPrefix = false;
+    for (var j = 0; j < line.ops.length; j++) {
+      var op = line.ops[j];
+      if (op.underlined)
+        continue;
+      var fraction = jitActivity(op) / maxActivity;
+      if (fraction < ACTIVITY_THRESHOLD)
+        continue;
+      op.color = activityColor(fraction);
+      if (!hasPrefix)
+        text += "   ";
+      hasPrefix = true;
+      text += " <a href='#' onclick='toggleOpcode(" + scriptIndex + "," + op.id + ")' class='opcodeOOL'"
+            + " style = 'background-color:" + op.color + "' id='selector_" + scriptIndex + "_" + op.id + "'>";
+      text += htmlEscape(op.text);
+      text += "</a>";
+    }
+
+    text += "</td></tr>\n";
+
+    for (var j = 0; j < underlinedArray.length; j++) {
+      var underlined = underlinedArray[j].sort(function (a,b) { return a.lineOffset > b.lineOffset; });
+
+      text += "<tr><td class='underline'>";
+      var offset = 0;
+      for (var k = 0; k < underlined.length; k++) {
+        var op = underlined[k];
+        while (offset < op.lineOffset) {
+          text += " ";
+          offset++;
+        }
+        text += "<a href='#' onclick='toggleOpcode(" + scriptIndex + "," + op.id + ")' class='opcodeInline'"
+              + " style = 'background-color:" + op.color + "' id='selector_" + scriptIndex + "_" + op.id + "'>";
+        while (offset < op.lineOffset + op.text.length) {
+          text += " ";
+          offset++;
+        }
+        text += "</a>";
+      }
+      text += "</td></tr>";
+    }
+
+    // add empty <div> tags to hold dropdown information for each op.
+    text += "<tr><td class='dropdown'>";
+    for (var j = 0; j < line.ops.length; j++) {
+      var op = line.ops[j];
+      if (op.color)
+        text += "<div id='dropdown_" + scriptIndex + "_" + op.id + "' class='dropdown'></div>";
+    }
+    text += "</td></tr>";
+  }
+
+  text += "</table>";
+  return text;
+}
+
