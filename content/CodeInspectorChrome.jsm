@@ -66,18 +66,46 @@ function htmlEscape(str)
 }
 
 var metricNames = [
-    "mjitHits",
-    "mjitStubs",
-    "mjitCode",
-    "mjitPics"
+    "interp",
+    "mjit",
+    "mjit_calls",
+    "mjit_code",
+    "mjit_pics",
+    "infer_mono",
+    "infer_di",
+    "infer_poly",
+    "infer_barrier",
+    "infer_nobarrier",
+    "observe_undefined",
+    "observe_null",
+    "observe_boolean",
+    "observe_int32",
+    "observe_double",
+    "observe_string",
+    "observe_object",
+    "id_int",
+    "id_double",
+    "id_other",
+    "id_unknown",
+    "elem_typed",
+    "elem_packed",
+    "elem_dense",
+    "elem_other",
+    "prop_static",
+    "prop_definite",
+    "prop_other",
+    "arith_int",
+    "arith_double",
+    "arith_other",
+    "arith_unknown"
 ];
 
 // Get a heuristic measurement of the amount of JIT activity for a script or
 // opcode, with a heavy penalty for stub calls performed.
 function jitActivity(v) {
-  var stubs = v.mjitStubs || 0;
-  var code = v.mjitCode || 0;
-  var pics = v.mjitPics || 0;
+  var stubs = v.mjit_calls || 0;
+  var code = v.mjit_code || 0;
+  var pics = v.mjit_pics || 0;
   return (stubs * 100) + code + pics;
 }
 

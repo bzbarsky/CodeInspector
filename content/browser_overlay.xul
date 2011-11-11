@@ -48,7 +48,7 @@
     {
       const WINDOW_URL = "chrome://CodeInspector/content/CodeInspectorChrome.xul";
       const WINDOW_TYPE = "Tools:CodeInspector";
-      const WINDOW_FLAGS = "chrome,centerscreen,resizable=false,dependent";
+      const WINDOW_FLAGS = "chrome,centerscreen,innerHeight=735,innerWidth=705,dependent";
 
       // focus currently open Coverage Tool window for this document, if any
       let contentWindow = Services.wm.getMostRecentWindow("navigator:browser")
