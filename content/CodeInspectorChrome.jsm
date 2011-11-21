@@ -121,15 +121,6 @@ function combineCounts(a, b)
   }
 }
 
-// Get a heuristic measurement of the amount of JIT activity for a script or
-// opcode, with a heavy penalty for stub calls performed.
-function jitActivity(v) {
-  var stubs = v.mjit_calls || 0;
-  var code = v.mjit_code || 0;
-  var pics = v.mjit_pics || 0;
-  return (stubs * 100) + code + pics;
-}
-
 function activityColor(fraction) {
   // get an rgb color for fraction. 1.0 should return rgb(255,0,0), 0.0 should return rgb(10,0,0).
   var gb = 200 - ((fraction * 200) | 0);
@@ -395,9 +386,11 @@ CodeInspectorChrome.prototype = {
   {
     var startButton = this._document.getElementById("startProfiling");
     var stopButton = this._document.getElementById("stopProfiling");
+    var clearButton = this._document.getElementById("clearProfiling");
 
     startButton.disabled = true;
     stopButton.disabled = false;
+    clearButton.disabled = false;
 
     var utils = this.contentWindow.QueryInterface(Ci.nsIInterfaceRequestor).
                   getInterface(Ci.nsIDOMWindowUtils);
@@ -408,16 +401,17 @@ CodeInspectorChrome.prototype = {
   {
     var startButton = this._document.getElementById("startProfiling");
     var stopButton = this._document.getElementById("stopProfiling");
+    var clearButton = this._document.getElementById("clearProfiling");
 
     startButton.disabled = false;
     stopButton.disabled = true;
+    clearButton.disabled = false;
 
     var utils = this.contentWindow.QueryInterface(Ci.nsIInterfaceRequestor).
                   getInterface(Ci.nsIDOMWindowUtils);
     utils.stopPCCountProfiling();
 
     var count = utils.getPCCountScriptCount();
-    var text = "";
 
     this.scripts = [];
     for (var i = 0; i < count; i++) {
@@ -427,16 +421,61 @@ CodeInspectorChrome.prototype = {
       this.scripts.push(summary);
     }
 
+    this.updateSelection();
+  },
+
+  clearProfiling: function()
+  {
+    var startButton = this._document.getElementById("startProfiling");
+    var stopButton = this._document.getElementById("stopProfiling");
+    var clearButton = this._document.getElementById("clearProfiling");
+
+    startButton.disabled = false;
+    stopButton.disabled = true;
+    clearButton.disabled = true;
+
+    var utils = this.contentWindow.QueryInterface(Ci.nsIInterfaceRequestor).
+                  getInterface(Ci.nsIDOMWindowUtils);
+    utils.purgePCCounts();
+
+    var pane = this._document.getElementById("scriptPane");
+    pane.innerHTML = "No profiles to display.";
+  },
+
+  updateSelection: function()
+  {
+    var viewSelection = this._document.getElementById("viewSelection");
+    var selectedValue = viewSelection.options[viewSelection.selectedIndex].value;
+
+    var measureActivity;
+    if (selectedValue == "activity") {
+      // Get a heuristic measurement of the amount of JIT activity for a script or
+      // opcode, with a heavy penalty for stub calls performed.
+      measureActivity = this.measureActivity = function (v) {
+        var stubs = v.mjit_calls || 0;
+        var code = v.mjit_code || 0;
+        var pics = v.mjit_pics || 0;
+        return (stubs * 100) + code + pics;
+      };
+    } else {
+      // Measure the specific attribute chosen.
+      measureActivity = this.measureActivity = function (v) {
+        return v[selectedValue] || 0;
+      };
+    }
+
     // initially sort the scripts by the amount of JIT activity.
-    var activityScripts = this.scripts.sort(
-      function (a,b) { return jitActivity(b.totals) - jitActivity(a.totals); }
+    var activityScripts = this.scripts.slice(0).sort(
+      function (a,b) { return measureActivity(b.totals) - measureActivity(a.totals); }
     );
 
-    var maxActivity = jitActivity(activityScripts[0].totals || {});
+    var text = "";
+
+    var maxActivity = this.measureActivity(activityScripts[0].totals || {}) || 1;
     for (var i = 0; i < activityScripts.length; i++) {
       var summary = activityScripts[i];
-      var fraction = jitActivity(summary.totals) / maxActivity;
-      if (fraction < ACTIVITY_THRESHOLD)
+      var fraction = measureActivity(summary.totals) / maxActivity;
+      if (fraction < ACTIVITY_THRESHOLD && !summary.selected)
         continue;
       var color = activityColor(fraction);
       var toggle = "'document.toggleScript(" + summary.id + ")'";
@@ -454,29 +493,46 @@ CodeInspectorChrome.prototype = {
 
     var pane = this._document.getElementById("scriptPane");
     pane.innerHTML = text;
+
+    for (var i = 0; i < activityScripts.length; i++) {
+      var summary = activityScripts[i];
+      if (summary.selected)
+        this.toggleScript(summary.id);
+    }
   },
 
   toggleScript: function(scriptIndex)
   {
+    var script = this.scripts[scriptIndex];
+
     var element = this._document.getElementById("scriptTable" + scriptIndex);
     if (element.innerHTML) {
       element.innerHTML = "";
+      script.selected = false;
       return;
     }
+
+    script.selected = true;
 
     var utils = this.contentWindow.QueryInterface(Ci.nsIInterfaceRequestor).
                   getInterface(Ci.nsIDOMWindowUtils);
     var json = utils.getPCCountScriptContents(scriptIndex);
-    jsdump(json);
     var contents = JSON.parse(json);
 
     var text = WalkScriptText.call(this, scriptIndex, contents);
     element.innerHTML = text;
+
+    var selected = script.selectedOpcodes;
+    if (selected) {
+      for (var i = 0; i < selected.length; i++)
+        this.toggleOpcode(scriptIndex, selected[i]);
+    }
   },
 
   toggleOpcode: function(scriptIndex, id)
   {
-    var op = this.scripts[scriptIndex].opcodes[id];
+    var script = this.scripts[scriptIndex];
+    var op = script.opcodes[id];
 
     var selector = this._document.getElementById("selector_" + scriptIndex + "_" + id);
     var dropdown = this._document.getElementById("dropdown_" + scriptIndex + "_" + id);
@@ -486,8 +542,29 @@ CodeInspectorChrome.prototype = {
       dropdown.innerHTML = "";
       selector.className = op.underlined ? "opcodeInline" : "opcodeOOL";
       selector.style.backgroundColor = op.color;
+
+      // remove this opcode from the selected list.
+      var selected = script.selectedOpcodes;
+      for (var i = 0; i < selected.length; i++) {
+        if (selected[i] == op.id) {
+          selected[i] = selected[selected.length - 1];
+          selected.pop();
+          break;
+        }
+      }
+
       return;
     }
+
+    // add this opcode to the selected list.
+    if (!script.selectedOpcodes)
+      script.selectedOpcodes = [];
+    var found = false;
+    var selected = script.selectedOpcodes;
+    for (var i = 0; i < selected.length; i++)
+      found |= selected[i] == op.id;
+    if (!found)
+      selected.push(op.id);
 
     selector.className = op.underlined ? "opcodeInlineSelected" : "opcodeOOLSelected";
     selector.style.backgroundColor = '#1E90FF';
@@ -544,12 +621,12 @@ function WalkScriptText(scriptIndex, contents)
   // store opcodes on the CodeInspectorChrome for later use.
   this.scripts[scriptIndex].opcodes = opcodes;
 
-  var maxActivity = 0;
+  var maxActivity = 1;
   var opcodeArray = contents.opcodes || [];
   for (var i = 0; i < opcodeArray.length; i++) {
     var op = opcodeArray[i];
     opcodes[op.id] = op;
-    var activity = jitActivity(op.counts);
+    var activity = this.measureActivity(op.counts);
     if (activity > maxActivity)
       maxActivity = activity;
   }
@@ -567,7 +644,7 @@ function WalkScriptText(scriptIndex, contents)
       continue;
 
     // ignore opcodes which are not sufficiently active.
-    var fraction = jitActivity(op.counts) / maxActivity;
+    var fraction = this.measureActivity(op.counts) / maxActivity;
     if (fraction < ACTIVITY_THRESHOLD)
       continue;
     op.color = activityColor(fraction);

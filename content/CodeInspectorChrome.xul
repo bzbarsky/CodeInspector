@@ -65,17 +65,53 @@
                value="Stop Profiling"
                disabled="true"
                onclick="window.codeInspectorChrome.stopProfiling()"/>
+        <input id="clearProfiling"
+               class="splitview-filter"
+               type="button"
+               value="Clear"
+               disabled="true"
+               onclick="window.codeInspectorChrome.clearProfiling()"/>
+        <select id="viewSelection"
+                class="splitview-filter"
+                onchange="window.codeInspectorChrome.updateSelection()">
+          <option value="activity">JIT Activity</option>
+          <option value="mjit_calls">Stub Calls</option>
+          <option disabled="true">--- Inferred Complexity ---</option>
+          <option value="infer_mono">Monomorphic</option>
+          <option value="infer_di">Dimorphic</option>
+          <option value="infer_poly">Polymorphic</option>
+          <option value="infer_barrier">Barriered</option>
+          <option disabled="true">--- Arithmetic Types ---</option>
+          <option value="arith_int">Integer Arithmetic</option>
+          <option value="arith_double">Double Arithmetic</option>
+          <option value="arith_other">Other Known Arithmetic</option>
+          <option value="arith_unknown">Unknown Arithmetic</option>
+          <option disabled="true">--- Element Index Types ---</option>
+          <option value="id_int">Integer Indexes</option>
+          <option value="id_double">Double Indexes</option>
+          <option value="id_other">Other Known Indexes</option>
+          <option value="id_unknown">Unknown Indexes</option>
+          <option disabled="true">--- Element Array Types ---</option>
+          <option value="elem_typed">Typed Array</option>
+          <option value="elem_packed">Packed Array</option>
+          <option value="elem_dense">Dense Array</option>
+          <option value="elem_other">Other Indexed Object</option>
+          <option disabled="true">--- Property Access Types ---</option>
+          <option value="prop_static">Static Property</option>
+          <option value="prop_definite">Definite Property</option>
+          <option value="prop_other">Other Property</option>
+          <option disabled="true">--- Observed Types ---</option>
+          <option value="observe_undefined">Undefined Value</option>
+          <option value="observe_null">Null Value</option>
+          <option value="observe_boolean">Boolean Value</option>
+          <option value="observe_int32">Integer Value</option>
+          <option value="observe_double">Double Value</option>
+          <option value="observe_string">String Value</option>
+          <option value="observe_object">Object Value</option>
+        </select>
       </div>
 <div id="scriptPane" style="overflow:auto;height:700px;width:700px;background-color:white">
-
-<table class='codeDisplay' cellspacing='0' cellpadding='0'>
-<tr>     <td class='code'>JSObject *get(uint32 key) const {</td></tr>
-<tr><td class='underline'>                          <span class='underline'>     </span></td></tr>
-<tr><td class='underline'>                            <span class='underline'>   </span></td></tr>
-<tr><td class='code'>    return data[getIndex(key)];</td></tr>
-<tr><td class='code'>}</td></tr>
-</table>
-
+No profiles to display.
 </div>
     </div>
     <div class="splitview-nav-container">
