@@ -65,6 +65,17 @@ function htmlEscape(str)
   return str;
 }
 
+function computeName(summary)
+{
+  // get the printed name for a script summary.
+  var text = "";
+  if (summary.name)
+    text += summary.name + " : ";
+  var file = summary.file.substring(0, 80);  // shorten long file paths
+  text += file + " (line " + summary.line + ")";
+  return text;
+}
+
 var metricNames = [
     "interp",
     "mjit",
@@ -99,6 +110,16 @@ var metricNames = [
     "arith_other",
     "arith_unknown"
 ];
+
+function combineCounts(a, b)
+{
+  var props = Object.getOwnPropertyNames(a);
+  for (var i = 0; i < props.length; i++) {
+    var prop = props[i];
+    var bprop = b[prop] || 0;
+    b[prop] = bprop + a[prop];
+  }
+}
 
 // Get a heuristic measurement of the amount of JIT activity for a script or
 // opcode, with a heavy penalty for stub calls performed.
@@ -407,12 +428,14 @@ CodeInspectorChrome.prototype = {
     }
 
     // initially sort the scripts by the amount of JIT activity.
-    var activityScripts = this.scripts.sort(function (a,b) { return jitActivity(b) - jitActivity(a); });
+    var activityScripts = this.scripts.sort(
+      function (a,b) { return jitActivity(b.totals) - jitActivity(a.totals); }
+    );
 
-    var maxActivity = jitActivity(activityScripts[0] || {});
+    var maxActivity = jitActivity(activityScripts[0].totals || {});
     for (var i = 0; i < activityScripts.length; i++) {
       var summary = activityScripts[i];
-      var fraction = jitActivity(summary) / maxActivity;
+      var fraction = jitActivity(summary.totals) / maxActivity;
       if (fraction < ACTIVITY_THRESHOLD)
         continue;
       var color = activityColor(fraction);
@@ -420,7 +443,7 @@ CodeInspectorChrome.prototype = {
       text += "<div class='scriptHeader'>";
       text += "<a href='#' onclick=" + toggle + " style='background-color:" + color + ";white-space:pre'>    </a>";
       text += "<a href='#' onclick=" + toggle + " class='scriptHeader'>";
-      text += " " + htmlEscape(summary.name);
+      text += " " + htmlEscape(computeName(summary));
       text += "</a>";
       text += "</div>";
       text += "<div id='scriptTable" + summary.id + "'></div>";
@@ -444,7 +467,7 @@ CodeInspectorChrome.prototype = {
     var utils = this.contentWindow.QueryInterface(Ci.nsIInterfaceRequestor).
                   getInterface(Ci.nsIDOMWindowUtils);
     var json = utils.getPCCountScriptContents(scriptIndex);
-
+    jsdump(json);
     var contents = JSON.parse(json);
 
     var text = WalkScriptText.call(this, scriptIndex, contents);
@@ -473,12 +496,13 @@ CodeInspectorChrome.prototype = {
     text += htmlEscape(op.text);
     text += "</a>";
 
-    text += "<span class='metrics'> ::";
+    text += "<span class='metrics'> :: " + op.name + " ::";
 
+    var counts = op.counts;
     for (var i = 0; i < metricNames.length; i++) {
       var name = metricNames[i];
-      if (op[name])
-        text += " " + name + ": " + op[name];
+      if (counts[name])
+        text += " " + name + ": " + counts[name];
     }
 
     text += "</span>";
@@ -489,12 +513,27 @@ CodeInspectorChrome.prototype = {
   }
 };
 
+function opcodesOverlap(a, b)
+{
+  var astart = a.lineOffset;
+  var aend = a.lineOffset + a.text.length;
+  var bstart = b.lineOffset;
+  var bend = b.lineOffset + b.text.length;
+
+  if (astart < bstart)
+    return bstart < aend;
+  return astart < bend;
+}
+
 function WalkScriptText(scriptIndex, contents)
 {
   // split the script text into separate lines, annotating each line with
   // expression information in that line.
 
-  var linesArray = contents.text.split('\n').map(function(v) { return {text:v, ops:[]} });
+  var linesArray = contents.text.split('\n').map(
+    function(v) {
+      return {text:v, ops:[]};
+    });
 
   var line = linesArray[0];
   var lineIndex = 0;
@@ -510,42 +549,9 @@ function WalkScriptText(scriptIndex, contents)
   for (var i = 0; i < opcodeArray.length; i++) {
     var op = opcodeArray[i];
     opcodes[op.id] = op;
-    var activity = jitActivity(op);
+    var activity = jitActivity(op.counts);
     if (activity > maxActivity)
       maxActivity = activity;
-  }
-
-  function addChildrenText(op, startOffset, endOffset, depth) {
-    if (op.text && !op.hasAssignedLine) {
-      line.ops.push(op);
-      op.hasAssignedLine = true;
-    }
-
-    if (op.text && startOffset) {
-      var len = op.text.length;
-      while (startOffset + len <= endOffset) {
-        if (line.text.substring(startOffset, startOffset + len) == op.text) {
-          var fraction = jitActivity(op) / maxActivity;
-          if (fraction >= ACTIVITY_THRESHOLD) {
-            op.lineOffset = startOffset;
-            op.lineDepth = depth++;
-            op.color = activityColor(fraction);
-          }
-          endOffset = startOffset + len;
-          break;
-        }
-        startOffset++;
-      }
-    }
-
-    var children = op.children || [];
-    for (var i = 0; i < children.length; i++) {
-      var child = opcodes[children[i]];
-      if (child)
-        startOffset = addChildrenText(child, startOffset, endOffset, depth);
-    }
-
-    return endOffset;
   }
 
   var opcodeArray = contents.opcodes || [];
@@ -553,68 +559,88 @@ function WalkScriptText(scriptIndex, contents)
     var op = opcodeArray[i];
     opcodes[op.id] = op;
 
-    // track the encountered line for each opcode, to use in case the opcode is
-    // orphaned and has no transitive parent with an offset.
-    op.foundLine = line;
+    // FIXME
+    if (!op.text)
+      continue;
+
+    if (op.name == "pop" || op.name == "goto")
+      continue;
+
+    // ignore opcodes which are not sufficiently active.
+    var fraction = jitActivity(op.counts) / maxActivity;
+    if (fraction < ACTIVITY_THRESHOLD)
+      continue;
+    op.color = activityColor(fraction);
+
+    // for ops spanning multiple lines, strip out text past the newline.
+    var newline = op.text.indexOf('\n');
+    if (newline >= 0)
+      op.text = op.text.substring(0, newline);
 
     // for opcodes with offsets into the script text, update the current line.
-    if (op.offset) {
-      while (op.offset < lineOffset) {
+    if (op.textOffset) {
+      while (op.textOffset < lineOffset) {
         line = linesArray[--lineIndex];
         lineOffset -= line.text.length + 1;
       }
-      while (lineOffset + line.text.length < op.offset && lineIndex != linesArray.length - 1) {
+      while (lineOffset + line.text.length < op.textOffset &&
+             lineIndex != linesArray.length - 1) {
         lineOffset += line.text.length + 1;
         line = linesArray[++lineIndex];
       }
 
-      var startOffset = op.offset - lineOffset;
-      var endOffset = op.text ? startOffset + op.text.length : line.text.length;
-      addChildrenText(op, startOffset, endOffset, 0);
+      var startOffset = op.textOffset - lineOffset;
+      if (line.text.indexOf(op.text, startOffset) == startOffset)
+        op.lineOffset = startOffset;
     }
-  }
 
-  // update op arrays on each line with any orphaned opcodes.
-  for (var id in opcodes) {
-    var op = opcodes[id];
-    if (op.text && !op.hasAssignedLine) {
-      var line = op.foundLine || lineArray[0];
-      line.ops.push(op);
-    }
+    line.ops.push(op);
   }
 
   var text = "<table class='codeDisplay' cellspacing='0' cellpadding='0'>";
 
-  for (var i = 0; i < linesArray.length; i++) {
-    var line = linesArray[i];
+  for (var lineIndex = 0; lineIndex < linesArray.length; lineIndex++) {
+    var line = linesArray[lineIndex];
 
     text += "<tr><td class='code'>";
     text += htmlEscape(line.text);
 
     var underlinedArray = [];
-    for (var depth = 0;; depth++) {
-      var underlined = [];
-      for (var j = 0; j < line.ops.length; j++) {
-        var op = line.ops[j];
-        if (op.lineDepth !== undefined && op.lineDepth == depth) {
-          op.underlined = true;
-          underlined.push(op);
+
+    // assign a depth to each underlined opcode on the line. sort by text
+    // length, placing longer opcodes above shorter ones.
+    var sortedLines = line.ops.sort(function(a,b) { return a.text.length < b.text.length; });
+    for (var opIndex = 0; opIndex < sortedLines.length; opIndex++) {
+      var op = sortedLines[opIndex];
+      if (!op.lineOffset)
+        continue;
+      var placedDepth = -1;
+      for (var depth = 0; depth < underlinedArray.length; depth++) {
+        var canPlace = true;
+        for (var depthIndex = 0; depthIndex < underlinedArray[depth].length; depthIndex++) {
+          if (opcodesOverlap(op, underlinedArray[depth][depthIndex])) {
+            canPlace = false;
+            break;
+          }
+        }
+        if (canPlace) {
+          placedDepth = depth;
+          break;
         }
       }
-      if (!underlined.length)
-        break;
-      underlinedArray.push(underlined);
+      if (placedDepth == -1) {
+        placedDepth = underlinedArray.length;
+        underlinedArray.push([]);
+      }
+      underlinedArray[placedDepth].push(op);
+      op.underlined = true;
     }
 
     var hasPrefix = false;
-    for (var j = 0; j < line.ops.length; j++) {
-      var op = line.ops[j];
-      if (op.underlined)
+    for (var opIndex = 0; opIndex < line.ops.length; opIndex++) {
+      var op = line.ops[opIndex];
+      if (op.lineOffset)
         continue;
-      var fraction = jitActivity(op) / maxActivity;
-      if (fraction < ACTIVITY_THRESHOLD)
-        continue;
-      op.color = activityColor(fraction);
       if (!hasPrefix)
         text += "   ";
       hasPrefix = true;
