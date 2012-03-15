@@ -2,7 +2,7 @@
 # $ make
 
 PWD=`pwd`
-XPI="${PWD}/build/CodeInspector.xpi"
+XPI="${PWD}/build/JITInspector.xpi"
 FILES=\
 	LICENSE.txt \
 	README.md \

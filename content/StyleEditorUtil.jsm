@@ -53,7 +53,7 @@ const Cu = Components.utils;
 
 Cu.import("resource://gre/modules/Services.jsm");
 
-const PROPERTIES_URL = "chrome://CodeInspector/locale/CodeInspector.properties";
+const PROPERTIES_URL = "chrome://JITInspector/locale/JITInspector.properties";
 
 const console = Services.console;
 const gStringBundle = Services.strings.createBundle(PROPERTIES_URL);

@@ -35,17 +35,17 @@
    -
    - ***** END LICENSE BLOCK ***** -->
 <!DOCTYPE window [
-<!ENTITY % CodeInspectorDTD SYSTEM "chrome://CodeInspector/locale/CodeInspector.dtd">
- %CodeInspectorDTD;
+<!ENTITY % JITInspectorDTD SYSTEM "chrome://JITInspector/locale/JITInspector.dtd">
+ %JITInspectorDTD;
 ]>
 <?xml-stylesheet href="chrome://global/skin/global.css" type="text/css"?>
-<?xml-stylesheet href="chrome://CodeInspector/skin/AdaptiveSplitView.css" type="text/css"?>
-<?xml-stylesheet href="chrome://CodeInspector/skin/CodeInspectorChrome.css" type="text/css"?>
+<?xml-stylesheet href="chrome://JITInspector/skin/AdaptiveSplitView.css" type="text/css"?>
+<?xml-stylesheet href="chrome://JITInspector/skin/JITInspectorChrome.css" type="text/css"?>
 <xul:window xmlns:xul="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
         xmlns="http://www.w3.org/1999/xhtml"
-        id="CodeInspector-window"
+        id="JITInspector-window"
         title="&window.title;"
-        windowtype="Tools:CodeInspector"
+        windowtype="Tools:JITInspector"
         width="640" height="440"
         persist="screenX screenY width height sizemode">
 <xul:script type="application/javascript" src="chrome://global/content/globalOverlay.js"/>
@@ -150,9 +150,9 @@ No profiles to display.
 </div>   <!-- .splitview-root -->
 
 <xul:script type="application/javascript"><![CDATA[
-Components.utils.import("chrome://CodeInspector/content/CodeInspectorChrome.jsm");
+Components.utils.import("chrome://JITInspector/content/JITInspectorChrome.jsm");
 let chromeRoot = document.getElementById("code-inspector-view");
-let chrome = new CodeInspectorChrome(chromeRoot);
+let chrome = new JITInspectorChrome(chromeRoot);
 window.codeInspectorChrome = chrome;
 ]]></xul:script>
 </xul:window>

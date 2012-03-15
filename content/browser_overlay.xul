@@ -35,19 +35,19 @@
    -
    - ***** END LICENSE BLOCK ***** -->
 <!DOCTYPE overlay [
-<!ENTITY % codeInspectorDTD SYSTEM "chrome://CodeInspector/locale/CodeInspector.dtd">
+<!ENTITY % codeInspectorDTD SYSTEM "chrome://JITInspector/locale/JITInspector.dtd">
  %codeInspectorDTD;
 ]>
 <?xml-stylesheet href="chrome://global/skin/global.css" type="text/css"?>
 <overlay id="style-editor-browser-overlay"
          xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul">
   <script type="application/javascript"><![CDATA[
-  var CodeInspector = {
+  var JITInspector = {
     prefEnabledName: "devtools.codeinspector.enabled",
     open: function CT_open()
     {
-      const WINDOW_URL = "chrome://CodeInspector/content/CodeInspectorChrome.xul";
-      const WINDOW_TYPE = "Tools:CodeInspector";
+      const WINDOW_URL = "chrome://JITInspector/content/JITInspectorChrome.xul";
+      const WINDOW_TYPE = "Tools:JITInspector";
       const WINDOW_FLAGS = "chrome,centerscreen,innerHeight=735,innerWidth=705,dependent";
 
       // focus currently open Coverage Tool window for this document, if any
@@ -75,20 +75,20 @@
               label="&codeinspector.label;"
               accesskey="&codeinspector.accesskey;"
               key="key_codeinspector"
-              command="Tools:CodeInspector"/>
+              command="Tools:JITInspector"/>
   </menupopup>
   <menupopup id="appmenu_webDeveloper_popup">
     <menuitem id="appmenu_codeInspector"
               insertbefore="appmenu_devToolsEndSeparator"
               label="&codeinspector.label;"
               key="key_codeinspector"
-              command="Tools:CodeInspector"/>
+              command="Tools:JITInspector"/>
   </menupopup>
 
   <commandset id="mainCommandSet">
-    <command id="Tools:CodeInspector"
+    <command id="Tools:JITInspector"
              insertafter="Tools:Scratchpad"
-             oncommand="CodeInspector.open();"/>
+             oncommand="JITInspector.open();"/>
   </commandset>
 
   <keyset id="mainKeyset">
@@ -97,6 +97,6 @@
          keycode="&codeinspector.keycode;"
          modifiers="shift"
          keytext="&codeinspector.keytext;"
-         command="Tools:CodeInspector"/>
+         command="Tools:JITInspector"/>
   </keyset>
 </overlay>

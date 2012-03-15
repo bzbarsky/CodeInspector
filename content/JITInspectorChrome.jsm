@@ -20,6 +20,7 @@
  *
  * Contributor(s):
  *   Brian Hackett <bhackett@mozilla.com> (original author)
+ *   Cedric Vivier <cedricv@neonux.com>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -37,7 +38,7 @@
 
 "use strict";
 
-const EXPORTED_SYMBOLS = ["CodeInspectorChrome"];
+const EXPORTED_SYMBOLS = ["JITInspectorChrome"];
 
 const Cc = Components.classes;
 const Ci = Components.interfaces;
@@ -46,9 +47,9 @@ const Cu = Components.utils;
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/NetUtil.jsm");
 Cu.import("resource://gre/modules/FileUtils.jsm");
-Cu.import("chrome://CodeInspector/content/AdaptiveSplitView.jsm");
-Cu.import("chrome://CodeInspector/content/Coverage.jsm");
-Cu.import("chrome://CodeInspector/content/StyleEditorUtil.jsm");
+Cu.import("chrome://JITInspector/content/AdaptiveSplitView.jsm");
+Cu.import("chrome://JITInspector/content/Coverage.jsm");
+Cu.import("chrome://JITInspector/content/StyleEditorUtil.jsm");
 
 function jsdump(str)
 {
@@ -135,7 +136,7 @@ const LOAD_ERROR = "load-error";
 const HTML_NS = "http://www.w3.org/1999/xhtml";
 
 /**
- * CodeInspectorChrome constructor.
+ * JITInspectorChrome constructor.
  *
  * The 'chrome' of the Coverage Tool is all the UI that populates and updates
  * the actual coverage reports.
@@ -146,9 +147,9 @@ const HTML_NS = "http://www.w3.org/1999/xhtml";
  *        Optional content DOMWindow to attach to this chrome.
  *        Default: the currently active browser tab content window.
  */
-function CodeInspectorChrome(aRoot, aContentWindow)
+function JITInspectorChrome(aRoot, aContentWindow)
 {
-  assert(aRoot, "Argument 'aRoot' is required to initialize CodeInspectorChrome.");
+  assert(aRoot, "Argument 'aRoot' is required to initialize JITInspectorChrome.");
 
   this._root = aRoot;
   this._document = this._root.ownerDocument;
@@ -181,7 +182,7 @@ function CodeInspectorChrome(aRoot, aContentWindow)
   }
 }
 
-CodeInspectorChrome.prototype = {
+JITInspectorChrome.prototype = {
   /**
    * Retrieve the content window attached to this chrome.
    *
@@ -253,19 +254,19 @@ CodeInspectorChrome.prototype = {
   get isContentAttached() this._isContentAttached,
 
   /**
-   * Add a listener for CodeInspectorChrome events.
+   * Add a listener for JITInspectorChrome events.
    *
-   * The listener implements ICodeInspectorChromeListener := {
+   * The listener implements IJITInspectorChromeListener := {
    *   onContentAttach:        Called when a content window has been attached.
-   *                           Arguments: (CodeInspectorChrome aChrome)
+   *                           Arguments: (JITInspectorChrome aChrome)
    *                           @see contentWindow
    *
    *   onContentDetach:        Called when the content window has been detached.
-   *                           Arguments: (CodeInspectorChrome aChrome)
+   *                           Arguments: (JITInspectorChrome aChrome)
    *                           @see contentWindow
    *
    *   onScriptAdded:          Called when a script has been added to the UI.
-   *                           Arguments (CodeInspectorChrome aChrome,
+   *                           Arguments (JITInspectorChrome aChrome,
    *                                      string scriptUri)
    * }
    *
@@ -618,7 +619,7 @@ function WalkScriptText(scriptIndex, contents)
 
   var opcodes = {};
 
-  // store opcodes on the CodeInspectorChrome for later use.
+  // store opcodes on the JITInspectorChrome for later use.
   this.scripts[scriptIndex].opcodes = opcodes;
 
   var maxActivity = 1;
