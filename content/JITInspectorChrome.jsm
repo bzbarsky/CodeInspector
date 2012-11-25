@@ -465,7 +465,6 @@ JITInspectorChrome.prototype = {
       };
     }
 
-    // initially sort the scripts by the amount of JIT activity.
     var activityScripts = this.scripts.slice(0).sort(
       function (a,b) { return measureActivity(b.totals) - measureActivity(a.totals); }
     );
@@ -495,6 +494,16 @@ JITInspectorChrome.prototype = {
     var pane = this._document.getElementById("scriptPane");
     pane.innerHTML = text;
 
+    var newMeasureIon = (selectedValue == "ion");
+    if (newMeasureIon != this.measureIon) {
+      this.measureIon = newMeasureIon;
+
+      // Reset the selected opcodes for the script. Opcodes have different names
+      // when showing Ion basic blocks vs. per-op information.
+      for (var i = 0; i < activityScripts.length; i++)
+        this.scripts[activityScripts[i].id].selectedOpcodes = null;
+    }
+
     for (var i = 0; i < activityScripts.length; i++) {
       var summary = activityScripts[i];
       if (summary.selected)
@@ -520,7 +529,8 @@ JITInspectorChrome.prototype = {
     var json = utils.getPCCountScriptContents(scriptIndex);
     var contents = JSON.parse(json);
 
-    var text = WalkScriptText.call(this, scriptIndex, contents);
+    var fn = this.measureIon ? WalkScriptIon : WalkScriptText;
+    var text = fn.call(this, scriptIndex, contents);
     element.innerHTML = text;
 
     var selected = script.selectedOpcodes;
@@ -537,6 +547,10 @@ JITInspectorChrome.prototype = {
 
     var selector = this._document.getElementById("selector_" + scriptIndex + "_" + id);
     var dropdown = this._document.getElementById("dropdown_" + scriptIndex + "_" + id);
+
+    if (!selector || !dropdown)
+      return;
+
     if (dropdown.innerHTML) {
       dropdown.style.paddingTop = "";
       dropdown.style.paddingBottom = "";
@@ -570,20 +584,41 @@ JITInspectorChrome.prototype = {
     selector.className = op.underlined ? "opcodeInlineSelected" : "opcodeOOLSelected";
     selector.style.backgroundColor = '#1E90FF';
 
-    var text = "<a href='#' onclick='toggleOpcode(" + scriptIndex + "," + id + ")' class='opcodeDropdown'>";
-    text += htmlEscape(op.text);
-    text += "</a>";
+    var text;
 
-    text += "<span class='metrics'> :: " + op.name + " ::";
+    if (this.measureIon) {
+      text = "Block " + op.text;
+      if (op.successors) {
+        for (var i = 0; i < op.successors.length; i++)
+          text += " -> #" + op.successors[i];
+      }
+      text += " :: " + op.hits + " hits<br></br>";
 
-    var counts = op.counts;
-    for (var i = 0; i < metricNames.length; i++) {
-      var name = metricNames[i];
-      if (counts[name])
-        text += " " + name + ": " + counts[name];
+      text += "<span class='code'>";
+      var codeLines = op.code.split('\n');
+      for (var i = 0; i < codeLines.length; i++) {
+        if (/#label/.test(codeLines[i]))
+          continue;
+        var className = (codeLines[i][0] == '[') ? 'masmHeader' : 'masm';
+        text += "<span class='" + className + "'>" + htmlEscape(codeLines[i]) + "</span><br></br>";
+      }
+      text += "</span>";
+    } else {
+      text = "<a href='#' onclick='toggleOpcode(" + scriptIndex + "," + id + ")' class='opcodeDropdown'>";
+      text += htmlEscape(op.text);
+      text += "</a>";
+
+      text += "<span class='metrics'> :: " + op.name + " ::";
+
+      var counts = op.counts;
+      for (var i = 0; i < metricNames.length; i++) {
+        var name = metricNames[i];
+        if (counts[name])
+          text += " " + name + ": " + counts[name];
+      }
+
+      text += "</span>";
     }
-
-    text += "</span>";
 
     dropdown.style.paddingTop = "4px";
     dropdown.style.paddingBottom = "4px";
@@ -622,8 +657,9 @@ function WalkScriptText(scriptIndex, contents)
   // store opcodes on the JITInspectorChrome for later use.
   this.scripts[scriptIndex].opcodes = opcodes;
 
-  var maxActivity = 1;
   var opcodeArray = contents.opcodes || [];
+
+  var maxActivity = 1;
   for (var i = 0; i < opcodeArray.length; i++) {
     var op = opcodeArray[i];
     opcodes[op.id] = op;
@@ -632,10 +668,8 @@ function WalkScriptText(scriptIndex, contents)
       maxActivity = activity;
   }
 
-  var opcodeArray = contents.opcodes || [];
   for (var i = 0; i < opcodeArray.length; i++) {
     var op = opcodeArray[i];
-    opcodes[op.id] = op;
 
     // FIXME
     if (!op.text)
@@ -766,3 +800,113 @@ function WalkScriptText(scriptIndex, contents)
   return text;
 }
 
+function WalkScriptIon(scriptIndex, contents)
+{
+  if (!contents.ion)
+    return;
+
+  // for now, only examine the most recent Ion compilation of the script.
+  var ion = contents.ion[0];
+
+  // split the script text into separate lines, annotating each line with
+  // basic blocks starting roughly around that line.
+
+  var linesArray = contents.text.split('\n').map(
+    function(v) {
+      return {text:v, blocks:[]};
+    });
+
+  var line = linesArray[0];
+  var lineIndex = 0;
+  var lineOffset = 0;  // starting offset of the current line
+
+  var opcodes = {};
+
+  // store opcodes on the JITInspectorChrome for later use.
+  this.scripts[scriptIndex].opcodes = opcodes;
+
+  // build a map from pc offsets to basic blocks at that pc.
+  var opcodeMap = {};
+
+  var maxActivity = 1;
+  for (var i = 0; i < ion.length; i++) {
+    var block = ion[i];
+    opcodes[block.id] = block;
+    if (block.hits > maxActivity)
+      maxActivity = block.hits;
+    if (opcodeMap[block.offset])
+      opcodeMap[block.offset].push(block);
+    else
+      opcodeMap[block.offset] = [block];
+  }
+
+  var opcodeArray = contents.opcodes || [];
+  for (var i = 0; i < opcodeArray.length; i++) {
+    var op = opcodeArray[i];
+
+    // for opcodes with offsets into the script text, update the current line.
+    if (op.textOffset) {
+      while (op.textOffset < lineOffset) {
+        line = linesArray[--lineIndex];
+        lineOffset -= line.text.length + 1;
+      }
+      while (lineOffset + line.text.length < op.textOffset &&
+             lineIndex != linesArray.length - 1) {
+        lineOffset += line.text.length + 1;
+        line = linesArray[++lineIndex];
+      }
+    }
+
+    // Handle any basic blocks at this op.
+    var blocks = opcodeMap[op.id];
+    if (!blocks)
+      continue;
+    for (var j = 0; j < blocks.length; j++) {
+      var block = blocks[j];
+      block.text = "#" + block.id;
+
+      // Ignore blocks which are not sufficiently active.
+      var fraction = block.hits / maxActivity;
+      if (fraction < ACTIVITY_THRESHOLD)
+        continue;
+      block.color = activityColor(fraction);
+
+      line.blocks.push(block);
+    }
+  }
+
+  var text = "<table class='codeDisplay' cellspacing='0' cellpadding='0'>";
+
+  for (var lineIndex = 0; lineIndex < linesArray.length; lineIndex++) {
+    var line = linesArray[lineIndex];
+
+    text += "<tr><td class='code'>";
+    text += htmlEscape(line.text);
+
+    var hasPrefix = false;
+    for (var blockIndex = 0; blockIndex < line.blocks.length; blockIndex++) {
+      var block = line.blocks[blockIndex];
+      if (!hasPrefix)
+        text += "   ";
+      hasPrefix = true;
+      text += " <a href='#' onclick='toggleOpcode(" + scriptIndex + "," + block.id + ")' class='opcodeOOL'"
+            + " style = 'background-color:" + block.color + "' id='selector_" + scriptIndex + "_" + block.id + "'>";
+      text += htmlEscape(block.text);
+      text += "</a>";
+    }
+
+    text += "</td></tr>\n";
+
+    // add empty <div> tags to hold dropdown information for each block.
+    text += "<tr><td class='dropdown'>";
+    for (var j = 0; j < line.blocks.length; j++) {
+      var block = line.blocks[j];
+      if (block.color)
+        text += "<div id='dropdown_" + scriptIndex + "_" + block.id + "' class='dropdown'></div>";
+    }
+    text += "</td></tr>";
+  }
+
+  text += "</table>";
+  return text;
+}

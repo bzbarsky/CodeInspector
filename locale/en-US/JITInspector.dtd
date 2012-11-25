@@ -1,18 +1,18 @@
-<!-- LOCALIZATION NOTE : FILE This file contains the Code Inspector window strings -->
+<!-- LOCALIZATION NOTE : FILE This file contains the JIT Inspector window strings -->
 <!-- LOCALIZATION NOTE : FILE Do not translate commandkeys -->
 
 <!-- LOCALIZATION NOTE (codeinspector.label): This menu item label appears
   -  in the Tools menu. -->
-<!ENTITY codeinspector.label         "Code Inspector">
+<!ENTITY codeinspector.label         "JIT Inspector">
 <!ENTITY codeinspector.accesskey     "y">
 <!ENTITY codeinspector.keycode       "VK_F7">
 <!ENTITY codeinspector.keytext       "F7">
 
-<!-- LOCALIZATION NOTE (window.title): This is the default title for Code Inspector
-     main window. NB: the property chromeWindowTitle in CodeInspector.properties
-     is used to dynamically update the Code Inspector window title with the title
+<!-- LOCALIZATION NOTE (window.title): This is the default title for JIT Inspector
+     main window. NB: the property chromeWindowTitle in JITInspector.properties
+     is used to dynamically update the JIT Inspector window title with the title
      of the web page it is editing. -->
-<!ENTITY window.title               "Code Inspector">
+<!ENTITY window.title               "JIT Inspector">
 
 <!ENTITY trackButton.label          "Track executing code">
 <!ENTITY trackButton.accesskey      "T">

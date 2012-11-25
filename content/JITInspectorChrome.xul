@@ -74,7 +74,8 @@
         <select id="viewSelection"
                 class="splitview-filter"
                 onchange="window.codeInspectorChrome.updateSelection()">
-          <option value="activity">JIT Activity</option>
+          <option value="ion">Ion Activity</option>
+          <option value="activity">JM Activity</option>
           <option value="mjit_calls">Stub Calls</option>
           <option disabled="true">--- Inferred Complexity ---</option>
           <option value="infer_mono">Monomorphic</option>

@@ -58,3 +58,15 @@ a.opcodeDropdown {
     white-space: pre;
     font-family: monospace;
 }
+
+span.masm {
+    border-width: 1px 1px 1px 1px;
+    padding: 0px 0px 0px 50px;
+    white-space: pre;
+    font-family: monospace;
+}
+
+span.masmHeader {
+    border-width: 1px 1px 1px 1px;
+    padding: 0px 0px 0px 0px;
+}
