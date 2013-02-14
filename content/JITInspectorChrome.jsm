@@ -668,6 +668,8 @@ function WalkScriptText(scriptIndex, contents)
       maxActivity = activity;
   }
 
+  var hasTextOffset = false;
+
   for (var i = 0; i < opcodeArray.length; i++) {
     var op = opcodeArray[i];
 
@@ -677,6 +679,9 @@ function WalkScriptText(scriptIndex, contents)
 
     if (op.name == "pop" || op.name == "goto")
       continue;
+
+    if (op.text == "(intermediate value)")
+      op.text = op.name;
 
     // ignore opcodes which are not sufficiently active.
     var fraction = this.measureActivity(op.counts) / maxActivity;
@@ -691,6 +696,8 @@ function WalkScriptText(scriptIndex, contents)
 
     // for opcodes with offsets into the script text, update the current line.
     if (op.textOffset) {
+      hasTextOffset = true;
+
       while (op.textOffset < lineOffset) {
         line = linesArray[--lineIndex];
         lineOffset -= line.text.length + 1;
@@ -704,6 +711,9 @@ function WalkScriptText(scriptIndex, contents)
       var startOffset = op.textOffset - lineOffset;
       if (line.text.indexOf(op.text, startOffset) == startOffset)
         op.lineOffset = startOffset;
+    } else if (!hasTextOffset) {
+      if (op.line && Math.abs(op.line - contents.line) < linesArray.length)
+        line = linesArray[op.line - contents.line];
     }
 
     line.ops.push(op);
@@ -840,12 +850,15 @@ function WalkScriptIon(scriptIndex, contents)
       opcodeMap[block.offset] = [block];
   }
 
+  var hasTextOffset = false;
+
   var opcodeArray = contents.opcodes || [];
   for (var i = 0; i < opcodeArray.length; i++) {
     var op = opcodeArray[i];
 
     // for opcodes with offsets into the script text, update the current line.
     if (op.textOffset) {
+      hasTextOffset = true;
       while (op.textOffset < lineOffset) {
         line = linesArray[--lineIndex];
         lineOffset -= line.text.length + 1;
@@ -855,6 +868,9 @@ function WalkScriptIon(scriptIndex, contents)
         lineOffset += line.text.length + 1;
         line = linesArray[++lineIndex];
       }
+    } else if (!hasTextOffset) {
+      if (op.line && Math.abs(op.line - contents.line) < linesArray.length)
+        line = linesArray[op.line - contents.line];
     }
 
     // Handle any basic blocks at this op.
