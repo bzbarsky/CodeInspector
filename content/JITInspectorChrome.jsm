@@ -502,7 +502,6 @@ JITInspectorChrome.prototype = {
               if (!this.ionOpcodeTotals[opcode])
                 this.ionOpcodeTotals[opcode] = 0;
               this.ionOpcodeTotals[opcode] += block.hits;
-              jsdump("WHAT " + opcode + " " + block.hits);
             }
           }
         }
