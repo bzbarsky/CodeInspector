@@ -400,6 +400,8 @@ JITInspectorChrome.prototype = {
 
   stopProfiling: function()
   {
+    this.ionOpcodeTotals = this.ionOpcodeDisabled = null;
+
     var startButton = this._document.getElementById("startProfiling");
     var stopButton = this._document.getElementById("stopProfiling");
     var clearButton = this._document.getElementById("clearProfiling");
@@ -421,6 +423,7 @@ JITInspectorChrome.prototype = {
       summary.id = i;
       this.scripts.push(summary);
     }
+    this.ionSummary = null;
 
     this.updateSelection();
   },
@@ -443,6 +446,101 @@ JITInspectorChrome.prototype = {
     pane.innerHTML = "No profiles to display.";
   },
 
+  ignoreIonOpcode: function(op)
+  {
+    switch (op) {
+    case "MoveGroup":
+    case "OsiPoint":
+    case "OsrEntry":
+    case "OsrValue":
+    case "Parameter":
+    case "Start":
+      return true;
+    }
+    return false;
+  },
+
+  computeIonOpcodeTotals: function()
+  {
+    this.ionOpcodeTotals = {};
+    this.ionOpcodeDisabled = {};
+
+    var utils = this.contentWindow.QueryInterface(Ci.nsIInterfaceRequestor).
+                  getInterface(Ci.nsIDOMWindowUtils);
+
+    for (var i = 0; i < this.scripts.length; i++) {
+      if (!this.scripts[i].totals.ion)
+        continue;
+
+      var json = utils.getPCCountScriptContents(i);
+      var contents = JSON.parse(json);
+
+      if (!contents.ion)
+        continue;
+
+      var scriptTotals = {};
+      this.scripts[i].totals.ionOpcodeTotals = scriptTotals;
+
+      for (var j = 0; j < contents.ion.length; j++) {
+        var ion = contents.ion[j];
+
+        for (var k = 0; k < ion.length; k++) {
+          var block = ion[k];
+          if (!block.hits)
+            continue;
+
+          var codeLines = block.code.split('\n');
+          for (var codeIndex = 0; codeIndex < codeLines.length; codeIndex++) {
+            var match;
+            if (match = /\[([^\]]*)\]/.exec(codeLines[codeIndex])) {
+              var opcode = match[1];
+              if (this.ignoreIonOpcode(opcode))
+                continue;
+              if (!scriptTotals[opcode])
+                scriptTotals[opcode] = 0;
+              scriptTotals[opcode] += block.hits;
+              if (!this.ionOpcodeTotals[opcode])
+                this.ionOpcodeTotals[opcode] = 0;
+              this.ionOpcodeTotals[opcode] += block.hits;
+              jsdump("WHAT " + opcode + " " + block.hits);
+            }
+          }
+        }
+      }
+    }
+  },
+
+  measureIonBlockActivity: function(block)
+  {
+    var total = 0;
+    var codeLines = block.code.split('\n');
+    for (var codeIndex = 0; codeIndex < codeLines.length; codeIndex++) {
+      var match;
+      if (match = /\[([^\]]*)\]/.exec(codeLines[codeIndex])) {
+        var opcode = match[1];
+        if (this.ignoreIonOpcode(opcode))
+          continue;
+        if (this.ionOpcodeDisabled[opcode])
+          continue;
+        total += block.hits
+      }
+    }
+    return total;
+  },
+
+  toggleIonOpcode: function(opcode)
+  {
+    this.ionOpcodeDisabled[opcode] = !this.ionOpcodeDisabled[opcode];
+    this.updateSelection();
+  },
+
+  toggleAllIonOpcodes: function(disabled)
+  {
+    for (var key in this.ionOpcodeTotals)
+      this.ionOpcodeDisabled[key] = disabled;
+    this.updateSelection();
+  },
+
   updateSelection: function()
   {
     var viewSelection = this._document.getElementById("viewSelection");
@@ -458,6 +556,20 @@ JITInspectorChrome.prototype = {
         var pics = v.mjit_pics || 0;
         return (stubs * 100) + code + pics;
       };
+    } else if (selectedValue == "ion") {
+      if (!this.ionOpcodeTotals)
+        this.computeIonOpcodeTotals();
+
+      measureActivity = this.measureActivity = (function (v) {
+        if (!v.ionOpcodeTotals)
+          return 0;
+        var total = 0;
+        for (var key in this.ionOpcodeTotals) {
+          if (!this.ionOpcodeDisabled[key])
+            total += v.ionOpcodeTotals[key] || 0;
+        }
+        return total;
+      }).bind(this);
     } else {
       // Measure the specific attribute chosen.
       measureActivity = this.measureActivity = function (v) {
@@ -470,6 +582,42 @@ JITInspectorChrome.prototype = {
     );
 
     var text = "";
+
+    if (selectedValue == "ion") {
+      text += "<div class='categoryHeader'>Ion Opcodes</div>";
+      text += "<a href='#' onclick='document.toggleAllIonOpcodes(false)' class='ionSelect'>Select All</a>";
+      text += "<a href='#' onclick='document.toggleAllIonOpcodes(true)' class='ionSelect'>Clear All</a>";
+      text += "<br></br><br></br>";
+
+      var opcodeList = [];
+      for (var key in this.ionOpcodeTotals)
+        opcodeList.push(key);
+      opcodeList.sort(
+        (function (a,b) { return this.ionOpcodeTotals[b] - this.ionOpcodeTotals[a]; }).bind(this)
+      );
+
+      var maxActivity = this.ionOpcodeTotals[opcodeList[0]] || 1;
+      for (var i = 0; i < opcodeList.length; i++) {
+        var opcode = opcodeList[i];
+        var fraction = this.ionOpcodeTotals[opcode] / maxActivity;
+        if (fraction < ACTIVITY_THRESHOLD)
+          continue;
+
+        var color = activityColor(fraction);
+
+        var clasp = (this.ionOpcodeDisabled[opcode]) ? 'ionOpcodeDisabled' : 'ionOpcodeEnabled';
+
+        var toggle = "'document.toggleIonOpcode(\"" + opcode + "\")'";
+        text += "<div class='scriptHeader'>";
+        text += "<a href='#' onclick=" + toggle + " style='background-color:" + color + ";white-space:pre'>    </a>";
+        text += "<a href='#' onclick=" + toggle + " class='" + clasp + "'>";
+        text += " " + htmlEscape(opcode);
+        text += "</a>";
+        text += "</div>";
+      }
+
+      text += "<div class='categoryHeader'>Scripts</div>";
+    }
 
     var maxActivity = this.measureActivity(activityScripts[0].totals || {}) || 1;
     for (var i = 0; i < activityScripts.length; i++) {
@@ -490,6 +638,8 @@ JITInspectorChrome.prototype = {
 
     this._document.toggleScript = this.toggleScript.bind(this);
     this._document.toggleOpcode = this.toggleOpcode.bind(this);
+    this._document.toggleIonOpcode = this.toggleIonOpcode.bind(this);
+    this._document.toggleAllIonOpcodes = this.toggleAllIonOpcodes.bind(this);
 
     var pane = this._document.getElementById("scriptPane");
     pane.innerHTML = text;
@@ -842,8 +992,8 @@ function WalkScriptIon(scriptIndex, contents)
   for (var i = 0; i < ion.length; i++) {
     var block = ion[i];
     opcodes[block.id] = block;
-    if (block.hits > maxActivity)
-      maxActivity = block.hits;
+    if (this.measureIonBlockActivity(block) > maxActivity)
+      maxActivity = this.measureIonBlockActivity(block);
     if (opcodeMap[block.offset])
       opcodeMap[block.offset].push(block);
     else
@@ -882,7 +1032,7 @@ function WalkScriptIon(scriptIndex, contents)
       block.text = "#" + block.id;
 
       // Ignore blocks which are not sufficiently active.
-      var fraction = block.hits / maxActivity;
+      var fraction = this.measureIonBlockActivity(block) / maxActivity;
       if (fraction < ACTIVITY_THRESHOLD)
         continue;
       block.color = activityColor(fraction);

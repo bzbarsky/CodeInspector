@@ -9,6 +9,12 @@ div.scriptHeader {
     padding-left: 6px;
 }
 
+div.categoryHeader {
+    font-size: x-large;
+    padding-bottom: 8px;
+    padding-left: 8px;
+}
+
 table.codeDisplay {
     padding-top: 10px;
     padding-bottom: 30px;
@@ -57,6 +63,18 @@ div.dropdown {
 a.opcodeDropdown {
     white-space: pre;
     font-family: monospace;
+}
+
+a.ionOpcodeEnabled {
+}
+
+a.ionOpcodeDisabled {
+    color: silver;
+}
+
+a.ionSelect {
+    padding: 0px 0px 8px 8px;
+    font-size: medium;
 }
 
 span.masm {
