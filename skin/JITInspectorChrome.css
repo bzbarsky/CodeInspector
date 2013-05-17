@@ -9,6 +9,12 @@ div.scriptHeader {
     padding-left: 6px;
 }
 
+div.ionOpcodeHeader {
+    font-size: medium;
+    padding-bottom: 3px;
+    padding-left: 3px;
+}
+
 div.categoryHeader {
     font-size: x-large;
     padding-bottom: 8px;
@@ -87,4 +93,10 @@ span.masm {
 span.masmHeader {
     border-width: 1px 1px 1px 1px;
     padding: 0px 0px 0px 0px;
+}
+
+span.ionOpcodeCounts {
+    font-size: smaller;
+    white-space: pre;
+    font-family: monospace;
 }

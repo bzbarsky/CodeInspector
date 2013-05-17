@@ -77,6 +77,16 @@ function computeName(summary)
   return text;
 }
 
+function padSpaces(n, m)
+{
+  var res = "";
+  var nlen = ("" + n).length;
+  var mlen = ("" + m).length;
+  for (var i = nlen; i < mlen; i++)
+    res += " ";
+  return res;
+}
+
 var metricNames = [
     "interp",
     "mjit",
@@ -468,21 +478,35 @@ JITInspectorChrome.prototype = {
     var utils = this.contentWindow.QueryInterface(Ci.nsIInterfaceRequestor).
                   getInterface(Ci.nsIDOMWindowUtils);
 
-    for (var i = 0; i < this.scripts.length; i++) {
-      if (!this.scripts[i].totals.ion)
+    // We'll be adding entries to the scripts when there were multiple Ion
+    // compilations, so don't visit a script multiple times.
+    var scriptsLength = this.scripts.length;
+
+    for (var scriptIndex = 0; scriptIndex < scriptsLength; scriptIndex++) {
+      if (!this.scripts[scriptIndex].totals.ion)
         continue;
 
-      var json = utils.getPCCountScriptContents(i);
+      var json = utils.getPCCountScriptContents(scriptIndex);
       var contents = JSON.parse(json);
 
       if (!contents.ion)
         continue;
 
-      var scriptTotals = {};
-      this.scripts[i].totals.ionOpcodeTotals = scriptTotals;
+      for (var ionIndex = 0; ionIndex < contents.ion.length; ionIndex++) {
+        var ion = contents.ion[ionIndex];
 
-      for (var j = 0; j < contents.ion.length; j++) {
-        var ion = contents.ion[j];
+        var scriptTotals = {};
+
+        if (ionIndex == 0) {
+          this.scripts[scriptIndex].totals.ionOpcodeTotals = scriptTotals;
+        } else {
+          var clonedScript = JSON.parse(JSON.stringify(this.scripts[scriptIndex]));
+          clonedScript.id = this.scripts.length;
+          clonedScript.clonedScriptIndex = scriptIndex;
+          clonedScript.clonedIonIndex = ionIndex;
+          clonedScript.totals.ionOpcodeTotals = scriptTotals;
+          this.scripts.push(clonedScript);
+        }
 
         for (var k = 0; k < ion.length; k++) {
           var block = ion[k];
@@ -605,12 +629,13 @@ JITInspectorChrome.prototype = {
         var color = activityColor(fraction);
 
         var clasp = (this.ionOpcodeDisabled[opcode]) ? 'ionOpcodeDisabled' : 'ionOpcodeEnabled';
+        var total = this.ionOpcodeTotals[opcode];
 
         var toggle = "'document.toggleIonOpcode(\"" + opcode + "\")'";
-        text += "<div class='scriptHeader'>";
+        text += "<div class='ionOpcodeHeader'>";
         text += "<a href='#' onclick=" + toggle + " style='background-color:" + color + ";white-space:pre'>    </a>";
         text += "<a href='#' onclick=" + toggle + " class='" + clasp + "'>";
-        text += " " + htmlEscape(opcode);
+        text += " <span class='ionOpcodeCounts'>" + total + padSpaces(total, maxActivity) + "</span> " + htmlEscape(opcode);
         text += "</a>";
         text += "</div>";
       }
@@ -624,12 +649,16 @@ JITInspectorChrome.prototype = {
       var fraction = measureActivity(summary.totals) / maxActivity;
       if (fraction < ACTIVITY_THRESHOLD && !summary.selected)
         continue;
+      if (selectedValue != "ion" && summary.clonedIonIndex)
+        continue;
       var color = activityColor(fraction);
       var toggle = "'document.toggleScript(" + summary.id + ")'";
       text += "<div class='scriptHeader'>";
       text += "<a href='#' onclick=" + toggle + " style='background-color:" + color + ";white-space:pre'>    </a>";
       text += "<a href='#' onclick=" + toggle + " class='scriptHeader'>";
       text += " " + htmlEscape(computeName(summary));
+      if (summary.clonedIonIndex)
+        text += " Older Compilation #" + summary.clonedIonIndex;
       text += "</a>";
       text += "</div>";
       text += "<div id='scriptTable" + summary.id + "'></div>";
@@ -673,9 +702,10 @@ JITInspectorChrome.prototype = {
 
     script.selected = true;
 
+    var queryScriptIndex = script.clonedIonIndex ? script.clonedScriptIndex : scriptIndex;
     var utils = this.contentWindow.QueryInterface(Ci.nsIInterfaceRequestor).
                   getInterface(Ci.nsIDOMWindowUtils);
-    var json = utils.getPCCountScriptContents(scriptIndex);
+    var json = utils.getPCCountScriptContents(queryScriptIndex);
     var contents = JSON.parse(json);
 
     var fn = this.measureIon ? WalkScriptIon : WalkScriptText;
@@ -964,8 +994,7 @@ function WalkScriptIon(scriptIndex, contents)
   if (!contents.ion)
     return;
 
-  // for now, only examine the most recent Ion compilation of the script.
-  var ion = contents.ion[0];
+  var ion = contents.ion[this.scripts[scriptIndex].clonedIonIndex || 0];
 
   // split the script text into separate lines, annotating each line with
   // basic blocks starting roughly around that line.
