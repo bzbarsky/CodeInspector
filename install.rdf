@@ -3,7 +3,7 @@
 <Description about="urn:mozilla:install-manifest">
   <em:id>bhackett@mozilla.com</em:id>
   <em:name>JIT Inspector</em:name>
-  <em:version>0.4.0.0</em:version>
+  <em:version>0.5.0.0</em:version>
   <em:description>Tool to track metrics for amount and optimization quality of JIT code executed</em:description>
   <em:creator>Brian Hackett (Mozilla)</em:creator>
   <em:homepageURL></em:homepageURL>
@@ -11,8 +11,8 @@
   <em:targetApplication>
     <Description><!-- Firefox -->
       <em:id>{ec8030f7-c20a-464f-9b0e-13a3a9e97384}</em:id>
-      <em:minVersion>12.*</em:minVersion>
-      <em:maxVersion>20.*</em:maxVersion>
+      <em:minVersion>12.0</em:minVersion>
+      <em:maxVersion>24.0</em:maxVersion>
     </Description>
   </em:targetApplication>
 </Description>
