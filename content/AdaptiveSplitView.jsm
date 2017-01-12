@@ -538,13 +538,13 @@ function scheduleAnimation(aElement)
   assert(arguments.length > 1);
 
   let classes = Array.prototype.slice.call(arguments, 1);
-  for each (let klass in classes) {
+  for (let klass of classes) {
     aElement.classList.add(klass);
   }
 
   let window = aElement.ownerDocument.defaultView;
   window.mozRequestAnimationFrame(function triggerAnimation() {
-    for each (let klass in classes) {
+    for (let klass of classes) {
       aElement.classList.remove(klass);
     }
   });
